@@ -1,0 +1,8 @@
+pygame>=2.5
+
+# Audio: engine/components/audio_source.py uses pygame.mixer (part of the
+# pygame package above, no separate dependency needed) - it already
+# covers what a typical 2D game needs: sound effects, looping background
+# music, per-source volume, play/pause/stop. If your game needs something
+# pygame.mixer genuinely can't do, that's the one file to swap a different
+# audio library into - nothing else in the engine touches audio.
