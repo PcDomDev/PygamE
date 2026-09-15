@@ -64,10 +64,13 @@ def _iter_frames(data):
         raise ValueError("Spritesheet JSON's 'frames' must be a JSON object or array.")
 
 
-def load_spritesheet_animations(json_path, image_path):
-    """Returns `{animation_name: [pygame.Surface, ...]}`, each list
+def load_spritesheet_animations(json_path, image_path, generate_flipped=True):
+    """Returns `{animation_name: [pygame.Surface, ...]}`?, each list
     ordered by frame number, ready to hand straight to
     `Animator(animations=...)`.
+
+    If `generate_flipped=True`, also generates horizontally flipped versions of all
+    animations prefixed with an underscore (e.g. 'idle' -> '_idle').
 
     Paths are used exactly as given (relative to the current working
     directory, or absolute) - the same convention `pygame.image.load`
@@ -100,6 +103,11 @@ def load_spritesheet_animations(json_path, image_path):
             x, y, w, h = rect["x"], rect["y"], rect["w"], rect["h"]
             surface = sheet.subsurface(pygame.Rect(x, y, w, h))
             pending.setdefault(anim_name, []).append((index, surface))
+
+            if generate_flipped:
+                flipped_anim_name = f"_{anim_name}"
+                flipped_surface = pygame.transform.flip(surface, True, False)
+                pending.setdefault(flipped_anim_name, []).append((index, flipped_surface))
     except (KeyError, TypeError) as exc:
         DebugManager.log_error(f"load_spritesheet_animations: unexpected frame shape in '{json_path}': {exc!r}")
         raise ValueError(f"Malformed frame entry in '{json_path}'") from exc
