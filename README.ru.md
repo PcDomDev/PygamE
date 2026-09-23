@@ -93,7 +93,7 @@ Engine.run()
 **Установка**
 
 ```bash
-git clone <https://github.com/PcDomDev/PygamE.git> PygamE
+git clone https://github.com/PcDomDev/PygamE.git PygamE
 cd PygamE
 
 python -m venv .venv
