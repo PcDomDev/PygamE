@@ -7,6 +7,7 @@ from engine.core.debug_manager import DebugManager
 from engine.input.input_manager import Input
 from engine.ui.ui_element import UIElement
 from engine.ui.ui_style import UIStyle
+from engine.utils.fonts import get_font, render_text
 
 
 class UIButton(UIElement):
@@ -14,7 +15,7 @@ class UIButton(UIElement):
         super().__init__(width=width, height=height, **kwargs)
         self.text = text
         self.style = style or UIStyle.default()
-        self._font = pygame.font.SysFont(self.style.font_name, self.style.font_size)
+        self._font = get_font(self.style.font_name, self.style.font_size)
 
         # list of callback(button) -> None - append to subscribe, more than
         # one listener is fine, same pattern as BoxCollider2D.on_trigger_enter
@@ -24,6 +25,12 @@ class UIButton(UIElement):
         self.is_pressed = False
 
     def update(self, delta_time):
+        if not self.is_visible:
+            # A hidden button (or one inside a hidden panel) can't be clicked.
+            self.is_hovered = False
+            self.is_pressed = False
+            return
+
         mouse_x, mouse_y = Input.mouse_position()
         self.is_hovered = self.contains_point(mouse_x, mouse_y)
 
@@ -64,7 +71,7 @@ class UIButton(UIElement):
             pygame.draw.rect(screen, self.style.border_color, rect, width=self.style.border_width)
 
         if self.text:
-            text_surface = self._font.render(self.text, True, self.style.text_color)
+            text_surface = render_text(self._font, self.text, self.style.text_color)
             text_x = rect.x + (rect.width - text_surface.get_width()) / 2
             text_y = rect.y + (rect.height - text_surface.get_height()) / 2
             screen.blit(text_surface, (round(text_x), round(text_y)))

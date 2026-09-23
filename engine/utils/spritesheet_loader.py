@@ -117,4 +117,4 @@ def load_spritesheet_animations(json_path, image_path, generate_flipped=True):
         frames.sort(key=lambda pair: pair[0])
         animations[anim_name] = [surface for _, surface in frames]
 
-    return animations
+    return animations

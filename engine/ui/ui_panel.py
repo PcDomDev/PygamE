@@ -1,6 +1,7 @@
 """UIPanel: the simplest UI building block - a plain rectangular
 background, optionally bordered. Used on its own (a colored box, a
-window background) or as a visual base other elements build on."""
+window background) or as a visual base other elements build on: parent other
+UI GameObjects to a panel's GameObject and they anchor to (and hide with) it."""
 import pygame
 
 from engine.ui.ui_element import UIElement

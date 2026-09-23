@@ -1,11 +1,12 @@
 """UILayoutGroup: arranges a list of UI GameObjects in a vertical or
 horizontal stack, repositioning them every frame.
 
-This engine has no parent-child transform hierarchy, so this is not a
-true layout container the way Unity's would be - it's a simpler
-positioning helper. Attach it to its own GameObject, add_item() every UI
-GameObject you want stacked, and it keeps their transform.position lined
-up in a column (or row) relative to its own position.
+This is a simple positioning helper, not a full layout container: attach it
+to its own GameObject, add_item() every UI GameObject you want stacked, and it
+keeps their positions lined up in a column (or row) starting at its own
+*world* position. (Items are positioned in world space, so they may or may not
+be children of the group's GameObject; anchored elements are better placed
+with `anchor=` instead.)
 """
 import warnings
 
@@ -42,7 +43,7 @@ class UILayoutGroup(Component):
             self._items.remove(game_object)
 
     def update(self, delta_time):
-        origin = self.game_object.transform.position
+        origin_x, origin_y = self.game_object.transform.get_world_xy()
         cursor = 0.0
 
         for item in self._items:
@@ -53,10 +54,8 @@ class UILayoutGroup(Component):
                 continue
 
             if self.direction == "vertical":
-                item.transform.position.x = origin.x
-                item.transform.position.y = origin.y + cursor
+                item.transform.set_world_position(origin_x, origin_y + cursor)
                 cursor += element.height + self.spacing
             else:
-                item.transform.position.x = origin.x + cursor
-                item.transform.position.y = origin.y
+                item.transform.set_world_position(origin_x + cursor, origin_y)
                 cursor += element.width + self.spacing

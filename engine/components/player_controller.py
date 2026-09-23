@@ -18,11 +18,19 @@ DEFAULT_KEYBINDS = {
 
 DEFAULT_ANIM_MAP = {
     "idle": "idle",
+    "idle_left": "idle_left",
+    "idle_right": "idle_right",
+    "idle_up": "idle_up",
+    "idle_down": "idle_down",
+
     "walk_down": "walk_down",
     "walk_up": "walk_up",
     "walk_left": "walk_left",
     "walk_right": "walk_right",
+
     "jump": "jump",
+    "jump_left": "jump_left",
+    "jump_right": "jump_right",
 }
 
 _MOVEMENT_TYPES = {"top_down", "platformer"}
@@ -38,34 +46,25 @@ class PlayerController(Component):
         with optional multi-jump (see max_jumps below).
 
     Reads input through the Input/Key system (engine/input/) rather than
-    calling pygame directly, so `keybinds` accepts Key.* constants, raw
-    pygame.K_* constants, or key-name strings interchangeably - see
-    engine/input/key.py.
+    calling pygame directly.
 
-    Extending it: rather than overriding update() wholesale, override one of
-    the small hooks below:
+    Entity events (on `game_object.events`, only emitted if someone has
+    subscribed): "jumped" (jumps_used, remaining), "landed", and
+    "jumps_changed" (remaining, maximum) - e.g. to drive a double-jump HUD:
 
-      - `_on_jump()`               called the instant a jump fires
-      - `_play_platformer_animation` / `_play_top_down_animation`
-                                    to change animation-selection rules
-      - `_read_move_axis`          to change how input maps to a direction
-      - `_can_jump` / `_wants_to_jump`
-                                    to change what counts as "allowed to jump"
-
-    That keeps custom abilities (a dash, wall-slide, etc.) additive instead
-    of requiring a copy-paste of the whole class.
+        player.events.subscribe("jumps_changed", lambda remaining, maximum: ...)
     """
 
     def __init__(
-        self,
-        speed=200,
-        jump_force=350,
-        movement_type="top_down",
-        keybinds=None,
-        anim_map=None,
-        coyote_time=0.1,
-        jump_buffer_time=0.1,
-        max_jumps=1,
+            self,
+            speed=200,
+            jump_force=350,
+            movement_type="top_down",
+            keybinds=None,
+            anim_map=None,
+            coyote_time=0.1,
+            jump_buffer_time=0.1,
+            max_jumps=1,
     ):
         super().__init__()
 
@@ -84,33 +83,22 @@ class PlayerController(Component):
         self.keybinds = keybinds or {k: list(v) for k, v in DEFAULT_KEYBINDS.items()}
         self.anim_map = anim_map or dict(DEFAULT_ANIM_MAP)
 
-        # "Coyote time": a short grace window after walking off a ledge
-        # where the *first* jump still registers - matches what players
-        # intuitively expect, and is standard in most platformers. Set to
-        # 0 to disable. Only applies to the first jump in a chain - see
-        # _can_jump(): once airborne, further jumps (double/triple jump)
-        # are available immediately, since the player is deliberately
-        # using them, not accidentally walking off a ledge.
         self.coyote_time = coyote_time
-        # "Jump buffering": a jump pressed slightly *before* landing still
-        # fires the instant the character touches down, instead of being
-        # dropped because is_grounded wasn't true yet. Set to 0 to disable.
         self.jump_buffer_time = jump_buffer_time
-
-        # How many times the character can jump before needing to touch
-        # the ground again. 1 = a normal single jump (the default,
-        # unchanged behaviour). 2 = a double jump, 3 = a triple jump, etc.
         self.max_jumps = max(1, max_jumps)
         self._jumps_used = 0
 
-        # Large initial values so neither grace window is (incorrectly)
-        # already active before the player has ever touched the ground once.
         self._time_since_grounded = 999.0
         self._time_since_jump_pressed = 999.0
 
         self.animator = None
         self.rigidbody = None
         self.is_grounded = True
+        self._was_grounded = True
+
+        # Tracks last horizontal/vertical orientation for idle/jump animations
+        self.facing_x = 1
+        self.facing_y = 1
 
     def start(self):
         self.animator = self.game_object.get_component(Animator)
@@ -123,9 +111,6 @@ class PlayerController(Component):
 
     @property
     def jumps_remaining(self):
-        """How many more times the character can jump before needing to
-        touch the ground again - handy for a UI readout (e.g. a UIText
-        showing "Jumps: 2/2")."""
         return max(0, self.max_jumps - self._jumps_used)
 
     def update(self, delta_time):
@@ -133,10 +118,25 @@ class PlayerController(Component):
             self._update_top_down(delta_time)
         elif self.movement_type == "platformer":
             self._update_platformer(delta_time)
-        # else: already warned about the bad movement_type in __init__.
 
     def _is_pressed(self, action):
+        """Checks if any key mapped to the action is currently held down."""
         return any(Input.is_pressed(k) for k in self.keybinds.get(action, []))
+
+    def _is_just_pressed(self, action):
+        """Checks if any key mapped to the action was pressed on this exact frame."""
+        return any(Input.is_key_pressed(k) for k in self.keybinds.get(action, []))
+
+    def _emit(self, event, **payload):
+        """Fire an entity-scoped event (only if someone could be listening)."""
+        events = self.game_object._events
+        if events is not None:
+            events.emit(event, **payload)
+
+    def _set_jumps_used(self, count):
+        if count != self._jumps_used:
+            self._jumps_used = count
+            self._emit("jumps_changed", remaining=self.jumps_remaining, maximum=self.max_jumps)
 
     def _read_move_axis(self):
         move_x, move_y = 0, 0
@@ -172,16 +172,25 @@ class PlayerController(Component):
     def _play_top_down_animation(self, move_x, move_y):
         if not self.animator:
             return
+
+        if move_x != 0: self.facing_x = 1 if move_x > 0 else -1
+        if move_y != 0: self.facing_y = 1 if move_y > 0 else -1
+
         if move_y > 0:
-            self.animator.play(self.anim_map["walk_down"])
+            self.animator.play(self.anim_map.get("walk_down"))
         elif move_y < 0:
-            self.animator.play(self.anim_map["walk_up"])
+            self.animator.play(self.anim_map.get("walk_up"))
         elif move_x > 0:
-            self.animator.play(self.anim_map["walk_right"])
+            self.animator.play(self.anim_map.get("walk_right"))
         elif move_x < 0:
-            self.animator.play(self.anim_map["walk_left"])
+            self.animator.play(self.anim_map.get("walk_left"))
         else:
-            self.animator.play(self.anim_map["idle"])
+            idle_anim = self.anim_map.get(f"idle_{'right' if self.facing_x > 0 else 'left'}")
+            if not idle_anim or not self.animator.has_animation(idle_anim):
+                idle_anim = self.anim_map.get("idle")
+
+            if idle_anim:
+                self.animator.play(idle_anim)
 
     # ---------------- platformer mode ----------------
 
@@ -203,13 +212,18 @@ class PlayerController(Component):
         if self.rigidbody:
             self.is_grounded = self.rigidbody.is_grounded
 
+        if self.is_grounded and not self._was_grounded:
+            self._emit("landed")
+        self._was_grounded = self.is_grounded
+
         if self.is_grounded:
             self._time_since_grounded = 0.0
-            self._jumps_used = 0  # touching ground refills every jump
+            self._set_jumps_used(0)
         else:
             self._time_since_grounded += delta_time
 
-        if self._is_pressed("jump"):
+        # Only trigger jump timer reset on initial press event to prevent continuous multi-jumps while holding key
+        if self._is_just_pressed("jump"):
             self._time_since_jump_pressed = 0.0
         else:
             self._time_since_jump_pressed += delta_time
@@ -219,45 +233,55 @@ class PlayerController(Component):
 
     def _can_jump(self):
         if self._jumps_used == 0:
-            # The first jump in a chain: normal ground check, with the
-            # coyote-time grace window for "just walked off a ledge".
             return self._time_since_grounded <= self.coyote_time
-        # Every jump after the first (double/triple jump, ...) is available
-        # immediately while airborne, up to max_jumps - the player is
-        # deliberately using an extra jump, not accidentally leaving a
-        # platform, so coyote time doesn't apply here.
         return self._jumps_used < self.max_jumps
 
     def _perform_jump(self):
-        # Jump speed is set directly rather than added as an impulse on top
-        # of current velocity, so every jump in a chain (including a
-        # coyote-time jump, which starts already falling) launches to the
-        # same height - more predictable and easier to tune than making it
-        # velocity/mass dependent.
         self.rigidbody.velocity.y = -self.jump_force
         self.rigidbody.is_grounded = False
         self.is_grounded = False
-        self._jumps_used += 1
+        self._set_jumps_used(self._jumps_used + 1)
+        self._emit("jumped", jumps_used=self._jumps_used, remaining=self.jumps_remaining)
 
-        # Push both grace windows past their thresholds so this single press
-        # can't also trigger a second jump next frame.
         self._time_since_grounded = self.coyote_time + 1.0
         self._time_since_jump_pressed = self.jump_buffer_time + 1.0
+
+        if self.animator and self._jumps_used > 1:
+            jump_anim = self.anim_map.get("jump_right") if self.facing_x > 0 else self.anim_map.get("jump_left")
+            if jump_anim and self.animator.has_animation(jump_anim):
+                self.animator.play(jump_anim, loop=False, force_restart=True)
 
         self._on_jump()
 
     def _on_jump(self):
-        """Hook for subclasses - called the instant a jump is executed."""
         pass
 
     def _play_platformer_animation(self, move_x):
         if not self.animator:
             return
-        if not self.is_grounded and "jump" in self.anim_map:
-            self.animator.play(self.anim_map["jump"], loop=False)
+
+        if move_x != 0:
+            self.facing_x = 1 if move_x > 0 else -1
+
+        if not self.is_grounded:
+            target_anim = self.anim_map.get("jump_right") if self.facing_x > 0 else self.anim_map.get("jump_left")
+
+            if not target_anim or not self.animator.has_animation(target_anim):
+                target_anim = self.anim_map.get("jump")
+
+            if target_anim:
+                self.animator.play(target_anim, loop=False)
+
         elif move_x > 0:
-            self.animator.play(self.anim_map["walk_right"])
+            self.animator.play(self.anim_map.get("walk_right"))
         elif move_x < 0:
-            self.animator.play(self.anim_map["walk_left"])
+            self.animator.play(self.anim_map.get("walk_left"))
+
         else:
-            self.animator.play(self.anim_map["idle"])
+            target_anim = self.anim_map.get("idle_right") if self.facing_x > 0 else self.anim_map.get("idle_left")
+
+            if not target_anim or not self.animator.has_animation(target_anim):
+                target_anim = self.anim_map.get("idle")
+
+            if target_anim:
+                self.animator.play(target_anim)

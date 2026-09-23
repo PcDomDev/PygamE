@@ -29,3 +29,33 @@ def anchor_to_topleft_offset(anchor, width, height):
     probe = pygame.Rect(0, 0, width, height)
     setattr(probe, anchor, (0, 0))
     return probe.left, probe.top
+
+
+# --- Screen-space anchors (UI) ---------------------------------------------------
+# The same nine names, as (x, y) fractions of a rectangle - what the UI system
+# needs to place an element relative to the screen or to its parent panel.
+
+ANCHOR_FRACTIONS = {
+    "topleft": (0.0, 0.0), "midtop": (0.5, 0.0), "topright": (1.0, 0.0),
+    "midleft": (0.0, 0.5), "center": (0.5, 0.5), "midright": (1.0, 0.5),
+    "bottomleft": (0.0, 1.0), "midbottom": (0.5, 1.0), "bottomright": (1.0, 1.0),
+}
+
+_ANCHOR_ALIASES = {
+    "topcenter": "midtop", "top": "midtop", "centertop": "midtop",
+    "middleleft": "midleft", "left": "midleft", "centerleft": "midleft", "leftcenter": "midleft",
+    "middle": "center", "middlecenter": "center", "centermiddle": "center",
+    "middleright": "midright", "right": "midright", "centerright": "midright", "rightcenter": "midright",
+    "bottomcenter": "midbottom", "bottom": "midbottom", "centerbottom": "midbottom",
+}
+
+
+def normalize_anchor(name):
+    """Accepts "TopLeft", "top_left", "topleft", "Center", "BottomRight", ... and
+    returns the canonical name used by ANCHOR_FRACTIONS (raises ValueError if unknown)."""
+    key = str(name).lower().replace("_", "").replace("-", "").replace(" ", "")
+    key = _ANCHOR_ALIASES.get(key, key)
+    if key not in ANCHOR_FRACTIONS:
+        raise ValueError(f"Unknown anchor {name!r}. Use one of: TopLeft, TopCenter, TopRight, "
+                         f"MiddleLeft, Center, MiddleRight, BottomLeft, BottomCenter, BottomRight.")
+    return key

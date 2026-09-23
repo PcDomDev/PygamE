@@ -1,33 +1,35 @@
-"""AudioSource: plays a sound effect or a looping track, Unity-style -
-one component type covers both a one-shot "coin pickup" sound and a
-looping "background music" track, the way Unity's AudioSource does.
+"""AudioSource: plays a sound effect or a looping sound attached to an object,
+Unity-style - one component type covers both a one-shot "coin pickup" sound and
+a looping engine hum.
 
-Uses `pygame.mixer.Sound`, which `pygame.init()` (called by Engine)
-already initializes as part of setting up every pygame subsystem - no
-extra setup needed. See the README's "Audio" section for why this engine
-uses pygame.mixer rather than adding a separate audio dependency: it
-already covers what a typical 2D game needs (effects, music, per-source
-volume, looping), so pulling in another library would be extra
-complexity for no real capability gained. If your game needs something
-pygame.mixer genuinely can't do (e.g. advanced DSP/effects), swapping in
-another library (e.g. `pyo`) here is the natural extension point - this
-class is intentionally the only place in the engine that touches audio.
+It plays through `AudioManager` (engine/audio/audio_manager.py), so it obeys
+the master/SFX volume sliders and mute, plays on the SFX channels (never the
+music decks), and can be *spatial*: with `spatial=True` its volume and stereo
+pan follow the distance/offset between this object and the listener (the
+active camera by default), updated every frame while it plays.
+
+For background music use `AudioManager.play_music()` / `crossfade_to()` instead
+- an AudioSource is for sounds that belong to an object in the world.
 """
-import pygame
-
+from engine.audio.audio_manager import AudioManager
 from engine.components.component import Component
 from engine.core.debug_manager import DebugManager
 
 
 class AudioSource(Component):
-    def __init__(self, path=None, volume=1.0, loop=False, play_on_start=False):
+    def __init__(self, path=None, volume=1.0, loop=False, play_on_start=False,
+                 spatial=False, min_distance=100.0, max_distance=800.0, rolloff="linear"):
         super().__init__()
         self.volume = volume
         self.loop = loop
         self.play_on_start = play_on_start
+        self.spatial = spatial
+        self.min_distance = min_distance
+        self.max_distance = max_distance
+        self.rolloff = rolloff
 
         self._sound = None
-        self._channel = None
+        self._handle = None
 
         if path is not None:
             self.load(path)
@@ -37,17 +39,18 @@ class AudioSource(Component):
         missing file, an unsupported format, no audio device available)
         are logged via DebugManager rather than raised - a missing sound
         file shouldn't crash the whole game."""
-        try:
-            self._sound = pygame.mixer.Sound(path)
-            self._sound.set_volume(self.volume)
-        except (pygame.error, FileNotFoundError) as exc:
+        sound = AudioManager.load_sound(path)
+        if sound is None:
             owner = getattr(self.game_object, "name", "?")
-            DebugManager.log_error(f"AudioSource on '{owner}' failed to load '{path}': {exc!r}")
-            self._sound = None
+            DebugManager.log_error(f"AudioSource on '{owner}' failed to load '{path}'.")
+        self._sound = sound
 
     def start(self):
         if self.play_on_start:
             self.play()
+
+    def _position(self):
+        return self.game_object.transform.get_world_xy() if self.spatial else None
 
     def play(self):
         """Starts playback from the beginning. Safe to call with no sound
@@ -57,25 +60,37 @@ class AudioSource(Component):
             owner = getattr(self.game_object, "name", "?")
             DebugManager.log_warning(f"AudioSource on '{owner}' has no sound loaded - call load(path) first.")
             return
-        self._channel = self._sound.play(loops=-1 if self.loop else 0)
+        self.stop()
+        self._handle = AudioManager.play_sfx(
+            self._sound, volume=self.volume, loop=self.loop, position=self._position(),
+            min_distance=self.min_distance, max_distance=self.max_distance, rolloff=self.rolloff)
 
     def stop(self):
-        if self._channel is not None:
-            self._channel.stop()
+        if self._handle is not None:
+            self._handle.stop()
+            self._handle = None
 
     def pause(self):
-        if self._channel is not None:
-            self._channel.pause()
+        if self._handle is not None:
+            self._handle.pause()
 
     def resume(self):
-        if self._channel is not None:
-            self._channel.unpause()
+        if self._handle is not None:
+            self._handle.resume()
 
     def set_volume(self, volume):
         self.volume = volume
-        if self._sound is not None:
-            self._sound.set_volume(volume)
+        if self._handle is not None:
+            self._handle.set_volume(volume)
+
+    def update(self, delta_time):
+        # Keep a playing spatial sound glued to its object.
+        if self.spatial and self._handle is not None:
+            self._handle.set_position(self.game_object.transform.get_world_xy())
+
+    def on_destroy(self):
+        self.stop()
 
     @property
     def is_playing(self):
-        return self._channel is not None and self._channel.get_busy()
+        return self._handle is not None and self._handle.is_playing

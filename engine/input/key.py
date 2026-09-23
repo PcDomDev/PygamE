@@ -8,8 +8,12 @@ Instead of memorizing pygame.K_w, pygame.K_LEFT, etc., you can use:
     pygame.K_w     # raw pygame constants still work everywhere - Key.W
                    # literally *is* pygame.K_w, just under a clearer name
 
+Names with spaces in pygame's own table can be written with underscores:
+"left_shift", "right_ctrl", "caps_lock". Mouse buttons are strings too:
+"mouse_left", "mouse_middle", "mouse_right".
+
 See normalize_key() at the bottom - that's what actually turns any of the
-above into the underlying pygame key code, and it's what Input (in
+above into the underlying key code, and it's what Input (in
 input_manager.py) calls internally.
 """
 import pygame
@@ -124,13 +128,24 @@ _STRING_ALIASES = {
     "ctrl": Key.LCTRL,
     "control": Key.LCTRL,
     "alt": Key.LALT,
+    "lshift": Key.LSHIFT,
+    "rshift": Key.RSHIFT,
+    "lctrl": Key.LCTRL,
+    "rctrl": Key.RCTRL,
+    "lalt": Key.LALT,
+    "ralt": Key.RALT,
 }
+
+# Mouse buttons are addressed by string token, in the same namespace as keys,
+# so `Input.is_key_down("mouse_left")` works like any other key.
+MOUSE_TOKENS = ("mouse_left", "mouse_middle", "mouse_right", "mouse_x1", "mouse_x2")
 
 
 def normalize_key(key):
     """Turn a Key.* constant, a raw pygame.K_* constant, or a
     case-insensitive string (a single letter/digit, or a name like
-    "space"/"left"/"shift") into the underlying pygame key code (an int).
+    "space"/"left"/"left_shift"/"mouse_left") into the identifier Input tracks:
+    a pygame key code (an int) for keyboard keys, or a "mouse_*" string token.
 
     Raises ValueError for anything unrecognized, so a typo'd key name
     fails loudly and immediately, rather than a keybind silently never
@@ -144,17 +159,21 @@ def normalize_key(key):
 
     if isinstance(key, str):
         normalized = key.strip().lower()
+        if normalized in MOUSE_TOKENS:
+            return normalized
         if normalized in _STRING_ALIASES:
             return _STRING_ALIASES[normalized]
-        try:
-            # Falls back to pygame's own name table, so any key pygame
-            # recognizes works even if it isn't in the alias table above
-            # (numpad keys, media keys, punctuation, etc).
-            return pygame.key.key_code(normalized)
-        except (ValueError, TypeError):
-            pass
+        spaced = normalized.replace("_", " ").replace("-", " ")
+        for candidate in (normalized, spaced):
+            try:
+                # Falls back to pygame's own name table, so any key pygame
+                # recognizes works even if it isn't in the alias table above
+                # (numpad keys, media keys, punctuation, etc).
+                return pygame.key.key_code(candidate)
+            except (ValueError, TypeError):
+                continue
 
     raise ValueError(
         f"Unrecognized key: {key!r}. Use a Key.* constant, a raw pygame.K_* "
-        f"constant, or a string like \"w\", \"space\", or \"left\"."
+        f"constant, or a string like \"w\", \"space\", \"left_shift\" or \"mouse_left\"."
     )
