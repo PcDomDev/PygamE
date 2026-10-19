@@ -1,0 +1,45 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Tests and tooling caches ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Editors and IDEs ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- Operating system files ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Local secrets ----
+.env
+
+# ---- PygamE runtime files (created while the game runs, not source code) ----
+# PlayerPrefs save file, and the copy it moves aside when a save file can't be read
+playerprefs.json
+playerprefs.json.tmp
+*.corrupt
+# Screenshots produced by:  python examples/showcase.py --headless 300 shot.png
+shot.png
