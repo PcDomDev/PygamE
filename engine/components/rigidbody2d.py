@@ -48,10 +48,14 @@ class Rigidbody2D(Component):
       is_kinematic             moves by `velocity`, ignores forces and collisions (moving platforms,
                                bullets) - still fires trigger/collision events
       interpolate              render smoothly between physics steps (see Transform)
-      terminal_velocity        gravity cannot accelerate a body past this downward speed (px/s). It is a
-                               limit on what *gravity* can do, not a speed limit: a body that is already
-                               faster (a portal exit, a big impulse) keeps its speed until drag or a
-                               collision slows it
+      terminal_velocity        None (default) = no cap: a fall keeps accelerating as 1/2*g*t^2, so a higher
+                               `gravity` always means a visibly faster, harder fall. A number caps what
+                               *gravity* can do to the downward speed (px/s) - it is not a speed limit:
+                               a body that is already faster (a portal exit, a big impulse) keeps its
+                               speed until drag or a collision slows it. Careful: a cap makes every
+                               gravity above cap/0.25 look identical (they all hit the cap within a
+                               fraction of a second). For a natural limit use `drag` instead: the
+                               top speed is then about gravity/drag and it scales with gravity
       bounce                   0 = dead stop on impact, 1 = perfectly elastic (Unity's PhysicsMaterial2D
                                bounciness); impacts slower than a few px/s settle instead of jittering
 
@@ -74,7 +78,7 @@ class Rigidbody2D(Component):
     GROUND_PROBE_DISTANCE = 0
 
     def __init__(self, gravity=500, gravity_scale=1.0, drag=0.0, mass=1.0,
-                 use_gravity=True, is_kinematic=False, terminal_velocity=1000,
+                 use_gravity=True, is_kinematic=False, terminal_velocity=None,
                  friction=0.0, acceleration=None, interpolate=True, bounce=0.0):
         super().__init__()
         self.velocity = Vector2(0.0, 0.0)
@@ -262,7 +266,7 @@ class Rigidbody2D(Component):
             decel = self.friction * abs(g) * dt
             vx = 0.0 if abs(vx) <= decel else vx - math.copysign(decel, vx)
 
-        if vy > self.terminal_velocity:
+        if self.terminal_velocity is not None and vy > self.terminal_velocity:
             # Gravity may not push past terminal velocity, but it must not *slow* a body that is already
             # faster either (a portal exit at 1800 px/s would otherwise be snapped down to 1000 at once).
             vy = max(self.terminal_velocity, min(vy, old_vy))
